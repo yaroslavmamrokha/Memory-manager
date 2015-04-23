@@ -1,5 +1,5 @@
-
 #include "Heap.h"
+#include <ctime>
 #define FREE 0
 #define BUSY 1
 
@@ -31,7 +31,7 @@ static BlockState check_block(void*  block, int size);
 /*return next memory block*/
 static void *get_next_block(Heap* mem_block);
 /*internal alloc implementation*/
-static void* my_alloc_internal(uint size, Heap* block_start, char bExitOnBusy);
+//static void* my_alloc_internal(uint size, Heap* block_start, char bExitOnBusy);
 /*unite 2 memory blocks*/
 static void *unite_blocks(Heap* mem_block1, Heap* mem_block2);
 /*offsets block to service part*/
@@ -39,9 +39,8 @@ static Heap* normalizeRawBlock(void* mem_block);
 
 static uint defaul_heap_mem;
 static int heapSize;
-static void* heapmem;
+static void* heapmem;					
 static void * heap_start;
-static void * free_start;
 
 static void* serv_init(void* block, int size, char status){
 	Heap * Serv_part = (Heap*)block;
@@ -57,7 +56,8 @@ void heap_alloc(uint size){
 static Heap* normalize_block_allocation(Heap* mem_block)
 {
 	if (mem_block->block_size == 0){
-		mem_block->block_size = defaul_heap_mem - (mem_block - (Heap*)heap_start) - sizeof(Heap);
+		uint size_new = defaul_heap_mem - ((char*)mem_block - (char*)heap_start) - sizeof(Heap);
+		mem_block->block_size = size_new;
 	}
 	return mem_block;
 }
@@ -79,7 +79,11 @@ static BlockState check_block(void*  block, uint size)
 
 static void *get_next_block(Heap* mem_block){
 	char* out = (char*)mem_block;
-	return out + sizeof(Heap)+mem_block->block_size;
+	out += sizeof(Heap) + mem_block->block_size;
+	if (defaul_heap_mem - (out - (char*)heap_start) <= sizeof(Heap)){
+		return NULL;
+	}
+	return out;
 }
 static void *unite_blocks(Heap* mem_block1, Heap* mem_block2){
 	mem_block1->block_size += mem_block2->block_size + sizeof(Heap);
@@ -88,7 +92,7 @@ static void *unite_blocks(Heap* mem_block1, Heap* mem_block2){
 static void* my_alloc_internal(uint size, Heap* block_start, char bExitOnBusy = HEAP_FALSE)
 {
 	Heap* mem_block = (Heap*)block_start;
-	Heap* mem_end = (Heap*)heap_start + defaul_heap_mem;
+	Heap* mem_end = (Heap*)((char*)heap_start + defaul_heap_mem);
 	//check for size overflowing defaul_heap_mem  and free size
 	while (mem_block  <  mem_end){
 			char block_status = check_block(mem_block, size);
@@ -106,23 +110,32 @@ static void* my_alloc_internal(uint size, Heap* block_start, char bExitOnBusy = 
 				return NULL;
 			}
 			mem_block = (Heap*)get_next_block(mem_block);
+			if (mem_block == NULL){
+				return NULL;
+			}
 			break;
 		case eBlockState__NoSize:
 		{
 									
-									int  sizeleft = size - mem_block->block_size;
+						uint  sizeleft = size - mem_block->block_size;
 
-									
-									Heap* next = (Heap*) my_alloc_internal(sizeleft, (Heap*)(get_next_block(mem_block), HEAP_TRUE));
-									if (next != NULL){
-										mem_block = (Heap*)unite_blocks(mem_block, next);
-										return  serv_init(mem_block, 0, BUSY);
-									}
-									//no next, so we can’t alloc requested size
-									return  NULL;
+						Heap* next_blck = (Heap*)get_next_block(mem_block);
+						if (next_blck == NULL){
+							return NULL;
+						}
+						Heap* next = (Heap*)my_alloc_internal(sizeleft, next_blck, HEAP_TRUE);
+						if (next != NULL){
+							mem_block = (Heap*)unite_blocks(mem_block, next);
+							return  serv_init(mem_block, 0, BUSY);
+						}
+						//no next, so we can’t alloc requested size
+						mem_block = (Heap*)get_next_block(mem_block);
+						if (mem_block == NULL){
+							return NULL;
+						}
+						break;
 
-									break;
-		}
+			}
 		};
 
 	}
@@ -130,7 +143,7 @@ static void* my_alloc_internal(uint size, Heap* block_start, char bExitOnBusy = 
 }
 void* my_alloc(uint size)
 {
-	//heap_start but porper is first free block
+	//heap_start but prоper is first free block
 	return my_alloc_internal(size, (Heap*)heap_start);
 }
 static Heap* normalizeRawBlock(void* mem_block)
@@ -156,29 +169,31 @@ void print_heap(){
 	Heap* mem_block = (Heap*)heap_start;
 	Heap* mem_end = (Heap*)heap_start + defaul_heap_mem;
 	//check for size overflowing defaul_heap_mem  and free size
-	while (mem_block  <  mem_end){
-		mem_block  = normalize_block_allocation(mem_block);
+	while (mem_block  < mem_end){
+		mem_block = normalize_block_allocation(mem_block);
 		puts(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
 		printf("Block Address :: %p\n", mem_block);
+	
 		printf("Block Status :: %u\n", (int)mem_block->status);
 		printf("Block Size :: %u\n", mem_block->block_size);
 		puts("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
 		mem_block = (Heap*)get_next_block(mem_block);
-
+		if (mem_block == NULL){
+			break;
+		}
+		
 			
 	}
 }
 
 
 void main(){
-	heap_alloc(124);
-	while (1){
-		int *p = (int*)my_alloc(1);
-		if (p == NULL){
-			break;
-		}
-		*p = 19;
-				
-	}
-	print_heap();
+	heap_alloc(100);
+
+	char* p1 = (char*)my_alloc(10);
+	char* p2 = (char*)my_alloc(10);
+	
+	
+ 	print_heap();
+ 	
 }
